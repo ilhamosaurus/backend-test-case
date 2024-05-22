@@ -14,26 +14,37 @@ datasource db {
 }
 
 model User {
-  id         String    @id @default(uuid())
-  code       String    @unique
-  name       String
-  books_rent Int       @default(0)
-  createdAt  DateTime  @default(now())
-  penalty    DateTime?
-  Book       Book[]
+  id          String        @id @default(uuid())
+  code        String        @unique
+  name        String
+  books_rent  Int           @default(0)
+  createdAt   DateTime      @default(now())
+  penalty     DateTime?
+  BooksOnUser BooksOnUser[]
 
   @@map("users")
 }
 
-model Book {
-  id       String @id @default(uuid())
-  code     String @unique
-  title    String
-  author   String
-  stock    Int    @default(0)
-  borrower String
+model BooksOnUser {
+  book_code String
+  user_code String
+  returned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt()
 
-  user User @relation(fields: [borrower], references: [code], onUpdate: Cascade)
+  user User @relation(fields: [user_code], references: [code])
+  book Book @relation(fields: [book_code], references: [code])
+
+  @@id([book_code, user_code])
+}
+
+model Book {
+  id          String        @id @default(uuid())
+  code        String        @unique
+  title       String
+  author      String
+  stock       Int           @default(0)
+  BooksOnUser BooksOnUser[]
 
   @@map("books")
 }
