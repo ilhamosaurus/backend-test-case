@@ -1,0 +1,22 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:16.0-alpine
+    container_name: postgres_db
+    restart: unless-stopped
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=123
+      - POSTGRES_DB=backend_test
+    ports: 
+      - "5432:5432"
+    networks:
+      - backend
+
+volumes:
+  data:
+
+networks:
+  backend:
