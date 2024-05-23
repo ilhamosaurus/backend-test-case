@@ -3,6 +3,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { createDto } from './dto';
@@ -39,6 +40,11 @@ export class UserService {
     }
   }
 
+  /**
+   * Check user availability to borrow book
+   * @param code member code
+   * @returns true if user can borrow book, false otherwise
+   */
   async getUserAvailability(code: string): Promise<boolean> {
     const user = await this.prisma.user.findUnique({
       where: {
@@ -81,5 +87,85 @@ export class UserService {
     return Math.ceil(
       (new Date().getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
     );
+  }
+
+  async getAllUsers() {
+    try {
+      const users = await this.prisma.user.findMany({
+        include: {
+          BooksOnUser: {
+            select: {
+              book: {
+                select: {
+                  code: true,
+                  title: true,
+                  author: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!users) {
+        throw new NotFoundException('No users found');
+      }
+
+      return users;
+    } catch (error) {
+      Logger.error(error);
+      throw new InternalServerErrorException(`Failed to get users: ${error}`);
+    }
+  }
+
+  async penalizeUser(code: string) {
+    const now = Date.now();
+    try {
+      const user = await this.prisma.$transaction(async (tx) => {
+        const returnedBooks = await tx.booksOnUser.updateMany({
+          where: {
+            user_code: code,
+            returned: false,
+          },
+          data: {
+            returned: true,
+          },
+        });
+        if (!Array.isArray(returnedBooks) || returnedBooks.count === 0) {
+          throw new NotFoundException('No users found');
+        }
+
+        await tx.book.updateMany({
+          where: {
+            code: {
+              in: Array.isArray(returnedBooks)
+                ? returnedBooks.map((book) => book.book_code)
+                : [],
+            },
+          },
+          data: {
+            stock: {
+              increment: 1,
+            },
+          },
+        });
+
+        return tx.user.update({
+          where: {
+            code,
+          },
+          data: {
+            penalty: new Date(now),
+          },
+        });
+      });
+
+      return { message: 'User penalized successfully', data: user };
+    } catch (error) {
+      Logger.error(error);
+      throw new InternalServerErrorException(
+        `Failed to penalize user: ${error}`,
+      );
+    }
   }
 }
