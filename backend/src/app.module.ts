@@ -3,9 +3,15 @@ import { ConfigModule } from '@nestjs/config';
 import { UserModule } from './user/user.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { LoggerMiddleware } from './logger.middleware';
+import { BookModule } from './book/book.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), UserModule, PrismaModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    UserModule,
+    PrismaModule,
+    BookModule,
+  ],
   controllers: [],
   providers: [],
 })

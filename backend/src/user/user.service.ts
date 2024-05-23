@@ -8,6 +8,7 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { createDto } from './dto';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { Book } from '@prisma/client';
 
 @Injectable()
 export class UserService {
@@ -38,6 +39,27 @@ export class UserService {
       Logger.error(error);
       throw new InternalServerErrorException(`Failed to create user: ${error}`);
     }
+  }
+
+  async getUserDetails(code: string) {
+    const user = await this.prisma.user.findUnique({
+      where: {
+        code,
+      },
+      include: {
+        BooksOnUser: {
+          include: {
+            book: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
   }
 
   /**
@@ -89,12 +111,12 @@ export class UserService {
     );
   }
 
-  async getAllUsers() {
+  async getAllUsers(pageSize?: number, pageNumber?: number) {
     try {
       const users = await this.prisma.user.findMany({
         include: {
           BooksOnUser: {
-            select: {
+            include: {
               book: {
                 select: {
                   code: true,
@@ -105,13 +127,25 @@ export class UserService {
             },
           },
         },
+        skip: pageSize ? (pageNumber - 1) * pageSize : undefined,
+        take: pageSize,
       });
 
       if (!users) {
         throw new NotFoundException('No users found');
       }
 
-      return users;
+      return users.map((user) => ({
+        code: user.code,
+        name: user.name,
+        penalty: user.penalty,
+        booksRent: user.books_rent,
+        books: user.BooksOnUser.map(({ book }) => ({
+          code: book.code,
+          title: book.title,
+          author: book.author,
+        })),
+      }));
     } catch (error) {
       Logger.error(error);
       throw new InternalServerErrorException(`Failed to get users: ${error}`);
@@ -121,32 +155,39 @@ export class UserService {
   async penalizeUser(code: string) {
     const now = Date.now();
     try {
-      const user = await this.prisma.$transaction(async (tx) => {
-        const returnedBooks = await tx.booksOnUser.updateMany({
+      const user = await this.prisma.user.update({
+        where: {
+          code,
+        },
+        data: {
+          penalty: new Date(now),
+          books_rent: 0,
+        },
+      });
+
+      return { message: 'User penalized successfully', data: user };
+    } catch (error) {
+      Logger.error(error);
+      throw new InternalServerErrorException(
+        `Failed to penalize user: ${error}`,
+      );
+    }
+  }
+
+  async changeUserBooks(code: string, books: Book[]) {
+    const qty = books.length;
+    try {
+      const updatedUser = await this.prisma.$transaction(async (tx) => {
+        await tx.booksOnUser.updateMany({
           where: {
+            book_code: {
+              in: books.map((book) => book.code),
+            },
             user_code: code,
             returned: false,
           },
           data: {
             returned: true,
-          },
-        });
-        if (!Array.isArray(returnedBooks) || returnedBooks.count === 0) {
-          throw new NotFoundException('No users found');
-        }
-
-        await tx.book.updateMany({
-          where: {
-            code: {
-              in: Array.isArray(returnedBooks)
-                ? returnedBooks.map((book) => book.book_code)
-                : [],
-            },
-          },
-          data: {
-            stock: {
-              increment: 1,
-            },
           },
         });
 
@@ -155,16 +196,18 @@ export class UserService {
             code,
           },
           data: {
-            penalty: new Date(now),
+            books_rent: {
+              decrement: qty,
+            },
           },
         });
       });
 
-      return { message: 'User penalized successfully', data: user };
+      return { data: updatedUser };
     } catch (error) {
       Logger.error(error);
       throw new InternalServerErrorException(
-        `Failed to penalize user: ${error}`,
+        `Failed to change user's books: ${error}`,
       );
     }
   }

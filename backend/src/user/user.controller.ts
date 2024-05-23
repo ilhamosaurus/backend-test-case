@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { UserService } from './user.service';
 import { createDto } from './dto';
 
@@ -7,12 +15,19 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Get()
-  async getAllUsers() {
-    return this.userService.getAllUsers();
+  async getAllUsers(
+    @Query() query: { pageSize?: number; pageNumber?: number },
+  ) {
+    return this.userService.getAllUsers(query.pageNumber, query.pageSize);
   }
 
   @Post()
   async createUser(@Body() dto: createDto) {
     return this.userService.createUser(dto);
+  }
+
+  @Patch('penalize/:code')
+  async penalizeUser(@Param('code') code: string) {
+    return this.userService.penalizeUser(code);
   }
 }
